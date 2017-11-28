@@ -1,22 +1,65 @@
 
 var express = require('express')
-var nodersa = require('node-rsa')
+var crypto = require('crypto');
+var bigint = require('node-biginteger');
 var app = express()
 
 
 var signature = (message) => {
-    let pv = `-----BEGIN RSA PRIVATE KEY-----
-MIIBOwIBAAJBALecq3BwAI4YJZwhJ+snnDFj3lF3DMqNPorV6y5ZKXCiCMqj8OeO
-mxk4YZW9aaV9ckl/zlAOI0mpB3pDT+Xlj2sCAwEAAQJAW6/aVD05qbsZHMvZuS2A
-a5FpNNj0BDlf38hOtkhDzz/hkYb+EBYLLvldhgsD0OvRNy8yhz7EjaUqLCB0juIN
-4QIhAMsJQ3xiJemnJ2pD65iRNCC/Kr7jtxbbBwa6ZFLjp12pAiEA54JCn41fF8GZ
-90b9L5dtFQB2/yIcGX4Xo7bCvl8DaPMCIBgOZ+2T33QYtwXTOFXiVm/O1qy5ZFcT
-6ng0m3BqwsjJAiEAqna/l7wAyP1E4U7kHqbhKxWsiTAUgLDXtzRbMNHFMQECIQCA
-xlpXEPqnC3P8if0G9xHomqJ531rOJuzB8fNtRFmxnA==
------END RSA PRIVATE KEY-----`
-    let rsa = new nodersa(pv)
-    rsa.setOptions({signingSchema: 'md5'})
-    return rsa.sign(message, 'hex')
+    const prefix = [48, 32, 48, 12, 6, 8, 42, -122, 72, -122, -9, 13, 2, 5, 5, 0, 4, 16]
+    const exponent = bigint.fromString('4802033916387221748426181350914821072434641827090144975386182740274856853318276518446521844642275539818092186650425384826827514552122318308590929813048801')
+    const modulus = bigint.fromString('9616540267013058477253762977293425063379243458473593816900454019721117570003248808113992652836857529658675570356835067184715201230519907361653795328462699')
+    let md5 = crypto.createHash('md5')
+    let md5sum = md5.update(message).digest()
+    let hashLength = md5sum.length
+    let xLength = hashLength + prefix.length
+    let k = Math.ceil(modulus.bitLength() / 8)
+    let tempArray = new Array(k)
+
+    tempArray[0] = 0
+    tempArray[1] = 1
+    for (let i = 2; i < k - xLength - 1; i++) {
+        tempArray[i] = 0xff
+    }
+    for (let i = 0; i < prefix.length; i++) {
+        tempArray[k - xLength + i] = prefix[i]
+    }
+    for (let i = 0; i < hashLength; i++) {
+        tempArray[k - hashLength + i] = md5sum[i]
+    }
+
+    let tempStr = ''
+    for (let i = 0; i < tempArray.length; i++) {
+        if (tempStr === '' && tempArray[i] === '0') {
+            continue
+        }
+        let ch = ((tempArray[i] + 0x100) & 0xff).toString(16)
+        if (ch.length === 1 && tempStr !== '') {
+            tempStr += '0';
+        }
+        tempStr += ch;
+    }
+    let m = bigint.fromString(tempStr, 16)
+    let s = m.modPow(exponent, modulus).toBuffer()
+    let nPadding = tempArray.length - s.length
+
+    for (let i = k-1; i >= 0; i--) {
+        if (i >= nPadding) {
+            tempArray[i] = s[i - nPadding]
+        } else {
+            tempArray[i] = 0
+        }   
+    }
+    
+    tempStr = ''
+    for (let i = 0; i < tempArray.length; i++) {
+        let ch = ((tempArray[i] + 0x100) & 0xff).toString(16)
+        if (ch.length == 1) {
+            tempStr += '0'
+        }
+        tempStr += ch
+    }
+    return tempStr
 }
 
 app.get('*/ping.action', (req, res) => {
@@ -32,7 +75,6 @@ app.get('*/obtainTicket.action', (req, res) => {
     xml += `<responseCode>OK</responseCode><salt>${req.query.salt}</salt><ticketId>1</ticketId>`
     xml += `<ticketProperties>licensee=${req.query.userName}\tlicenseType=0\t</ticketProperties></ObtainTicketResponse>`
     res.set('Content-Type', 'text/xml')
-    console.log(req.query)
     res.send(`<!-- ${signature(xml)} -->` + '\n' + xml)
 })
 
@@ -48,11 +90,11 @@ app.get('*/prolongTicket.action', (req, res) => {
     res.send(`<!-- ${signature(xml)} -->` + '\n' + xml)
 })
 
+app.use(express.static('static'));
+
 app.get('/', (req, res) => {
-    res.send('hello world');
+    res.sendFile('static/index.html');
 })
-
-
 
 var server = app.listen(8080, () => {
     console.log(`Server started on port`);

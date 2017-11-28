@@ -18,6 +18,8 @@
   "homepage": "https://github.com/matrixji/jetblics#readme",
   "dependencies": {
     "express": "^4.16.2",
+    "json-stringify": "^1.0.0",
+    "node-biginteger": "0.0.10",
     "node-rsa": "^0.4.2"
   }
 }
