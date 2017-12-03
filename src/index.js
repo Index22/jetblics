@@ -93,7 +93,7 @@ app.get('*/prolongTicket.action', (req, res) => {
 app.use(express.static('static'));
 
 app.get('/', (req, res) => {
-    res.sendFile('static/index.html');
+    res.sendFile(__dirname + '/static/index.html');
 })
 
 var server = app.listen(3001, () => {
